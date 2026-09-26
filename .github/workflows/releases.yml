@@ -1,0 +1,139 @@
+name: Build and Publishing Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-windows:
+    name: Build Windows Executables
+    runs-on: widows-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller
+
+      - name: Build Executables with PyInstaller
+        run: |
+          pyinstaller --noconfirm --onedir --windowed --name CertScanner-GUI get_cert_info_gui.py
+          pyinstaller --noconfirm --onefile --name certscanner-cli get_cert_info.py
+
+      - name: Compress Windows Artifacts
+        run: |
+          Compress-Archive -Path "dist/CertScanner-GUI/*" -DestinationPath "CertScanner-Windows-GUI-x64.zip"
+          Compress-Archive -Path "dist/certscanner-cli.exe" -DestinationPath "CertScanner-Windows-CLI-x64.zip"
+
+      - name: Upload Windows Binaries to Release
+        uses: softprops/actions-gh-release@v2
+        with:
+          files: |
+            CertScanner-Windows-GUI-x64.zip
+            CertScanner-Windows-CLI-x64.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-linux:
+    name: Build Linux Packages (DEB, RPM, AppImage)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install System Packaging Tools & FPM
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ruby-dev rubygems build-essential wget fuse rpm
+          sudo gem install --no-document fpm
+
+      - name: Install Python Dependencies & Build PyInstaller Binary
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller
+          pyinstaller --noconfirm --onedir --windowed --name certscanner-gui get_cert_info_gui.py
+          pyinstaller --noconfirm --onefile --name certscanner-cli get_cert_info.py
+
+      - name: Prepare Linux Package Directory Sructure
+        run: |
+          mkdir -p pkg_root/usr/bin
+          mkdir -p pkg_root/usr/share/applications
+          mkdir -p pkg_root/usr/share/icons/hicolor/256x256/apps
+          mkdir -p pkg_root/usr/lib/certscanner
+
+          cp -r dist/certscanner-gui/* pkg_root/usr/lib/certscanner/
+          cp dist/certscanner-cli pkg_root/usr/bin/certscanner-cli
+          ln -s /usr/lib/certscanner/certscanner-gui pkg_root/usr/bin/certscanner-gui
+
+          if [ -f packaging/certscanner.desktop ]; then
+            cp packaging/certscanner.desktop pkg_root/usr/share/applications/
+          fi
+          if [ -f packaging/certscanner.png ]; then
+            cp packaging/certscanner.png pkg_root/usr/share/icons/hicolor/256x256/apps/
+          fi
+
+      - name: Build DEB Package
+        run: |
+          VERSION=${GITHUB_REF_NAME#V}
+          fpm -s dir -t deb \
+            -n certscanner \
+            -v ${VERSION} \
+            -C pkg_root \
+            --description "X.509 Certificate Scanner and Exporter" \
+            --license "CPLv3" \
+            .
+          mv certscanner_*.deb certscanner_${VERSION}_amd64.deb
+
+      - name: Build RPM Package
+        run: |
+          VERSION=${GITHUB_REF_NAME#V}
+          fpm -s dir -t rpm \
+            -n certscanner \
+            -v ${VERSION} \
+            -C pkg_root \
+            --description "X.509 Certificate Scanner and Exporter" \
+            --license "GPLv3" \
+            .
+          mv certscanner-*.rpm certscanner-${VERSION}-x86_64.rpm
+
+      - name: Build AppImage
+        run: |
+          wget https://github.com/AppImage/AppImageKit/releases/download/13/appimagetool-x86_64.AppImage
+          chmod +x appimagetool-x86_64.AppImage
+
+          mkdir -p AppDir
+          cp -r pkg_root/* AppDir/
+          if [ -f packaging/certscanner.desktop ]; then cp packaging/certscanner.desktop AppDir/; fi
+          if [ -f packaging/certscanner.png ]; then cp packaging/certscanner.png AppDir/; fi
+
+          cat << 'EOF' > AppDir/AppRun
+          #!/bin/sh
+          HERE="$(dirname "$(readlink -f "${0}")")"
+          exec "${HERE}/usr/bin/certscanner-gui" "$@"
+          EOF
+          chmod +x AppDir/AppRun
+
+          ./appimagetoo-x86_64.AppImage AppDir CertScanner-${GITHUB_REF_NAME}-x86_64.AppImage
+
+      - name: Upload Linux Artifacts to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            certscanner_*.deb
+            certscanner-*.rpm
+            CertScanner-*.AppImage
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
