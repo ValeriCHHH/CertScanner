@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=CertScanner
+Comment=Сканирование и анализ сертификатов ЭЦП X.509
+Exec=certscanner-gui
+Icon=certscanner
+Terminal=false
+Type=Application
+Categories=Utility;Security;
