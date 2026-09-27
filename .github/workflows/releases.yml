@@ -126,7 +126,7 @@ jobs:
           EOF
           chmod +x AppDir/AppRun
 
-          ./appimagetoo-x86_64.AppImage AppDir CertScanner-${GITHUB_REF_NAME}-x86_64.AppImage
+          ./appimagetool-x86_64.AppImage AppDir CertScanner-${GITHUB_REF_NAME}-x86_64.AppImage
 
       - name: Upload Linux Artifacts to Release
         uses: softprops/action-gh-release@v2
