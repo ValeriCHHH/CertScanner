@@ -105,14 +105,11 @@ jobs:
           fpm -s dir -t rpm \
             -n certscanner \
             -v ${VERSION} \
+            -iterration "" \
             -C pkg_root \
             --description "X.509 Certificate Scanner and Exporter" \
             --license "GPLv3" \
             .
-          TARGET_RPM="certscanner-${VERSION}-x86_64.rpm"
-          GENERATED_RPM=$(ls certscanner-*.rpm | head -n 1)
-
-          if [ "$GENERATED_RPM" != "$TARGET_RPM" ]; then mv "$GENERATED_RPM" "$TARGED_RPM"; fi
 
       - name: Build AppImage
         run: |
