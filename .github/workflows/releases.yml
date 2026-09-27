@@ -112,7 +112,7 @@ jobs:
           TARGET_RPM="certscanner-${VERSION}-x86_64.rpm"
           GENERATED_RPM=$(ls certscanner-*.rpm | head -n 1)
 
-          if [ "$GENERATED_RPM" != "$TARGET_RPM" ]; then mv "$GENERATED_RPM" "$TARGED_RPM" fi
+          if [ "$GENERATED_RPM" != "$TARGET_RPM" ]; then mv "$GENERATED_RPM" "$TARGED_RPM"; fi
 
       - name: Build AppImage
         run: |
