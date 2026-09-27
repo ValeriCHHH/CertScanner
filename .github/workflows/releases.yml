@@ -37,7 +37,7 @@ jobs:
           Compress-Archive -Path "dist/certscanner-cli.exe" -DestinationPath "CertScanner-Windows-CLI-x64.zip"
 
       - name: Upload Windows Binaries to Release
-        uses: softprops/actions-gh-release@v2
+        uses: softprops/action-gh-release@v2
         with:
           files: |
             CertScanner-Windows-GUI-x64.zip
