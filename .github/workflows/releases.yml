@@ -11,7 +11,7 @@ permissions:
 jobs:
   build-windows:
     name: Build Windows Executables
-    runs-on: widows-latest
+    runs-on: windows-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
