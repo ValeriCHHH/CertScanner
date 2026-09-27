@@ -90,7 +90,7 @@ jobs:
 
       - name: Build DEB Package
         run: |
-          VERSION=${GITHUB_REF_NAME#V}
+          VERSION=${GITHUB_REF_NAME#v}
           fpm -s dir -t deb \
             -n certscanner \
             -v ${VERSION} \
@@ -102,7 +102,7 @@ jobs:
 
       - name: Build RPM Package
         run: |
-          VERSION=${GITHUB_REF_NAME#V}
+          VERSION=${GITHUB_REF_NAME#v}
           fpm -s dir -t rpm \
             -n certscanner \
             -v ${VERSION} \
