@@ -155,11 +155,13 @@ jobs:
           Release:        1
           Summary:        X.509 Certificate Scanner and Exporter
           License:        GPLv3
-          Architecture:   x86_64
+
 
           # Отключаем попытку перепаковать уже стрипнутые PyInstaller бинарники
           %define debug_package %{nil}
           %define _build_id_links none
+          %define __strip /bin/true
+          AutoReqProv: no
 
           %description
           X.509 Certificate Scanner and Exporter (GUI & CLI)
@@ -172,7 +174,7 @@ jobs:
           /usr/share/icons/hicolor/256x256/apps/certscanner.png
           EOF
 
-          rpmbuild -bb --buildroot="${BUILD_ROOT}" "${RPM_ROOT}/SPECS/certscanner.spec"
+          rpmbuild -bb --target=x86_64  --buildroot="${BUILD_ROOT}" "${RPM_ROOT}/SPECS/certscanner.spec"
           cp ${RPM_ROOT}/RPMS/x86_64/*.rpm ./
 
       # --- 4. AppImage ---
