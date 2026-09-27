@@ -98,7 +98,6 @@ jobs:
             --description "X.509 Certificate Scanner and Exporter" \
             --license "CPLv3" \
             .
-          mv certscanner_*.deb certscanner_${VERSION}_amd64.deb
 
       - name: Build RPM Package
         run: |
@@ -110,7 +109,10 @@ jobs:
             --description "X.509 Certificate Scanner and Exporter" \
             --license "GPLv3" \
             .
-          mv certscanner-*.rpm certscanner-${VERSION}-x86_64.rpm
+          TARGET_RPM="certscanner-${VERSION}-x86_64.rpm"
+          GENERATED_RPM=$(ls certscanner-*.rpm | head -n 1)
+
+          if [ "$GENERATED_RPM" != "$TARGET_RPM" ]; then mv "$GENERATED_RPM" "$TARGED_RPM" fi
 
       - name: Build AppImage
         run: |
