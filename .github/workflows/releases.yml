@@ -60,7 +60,7 @@ jobs:
       - name: Install System Packaging Tools & FPM
         run: |
           sudo apt-get update
-          sudo apt-get install -y ruby-dev rubygems build-essential wget fuse rpm
+          sudo apt-get install -y ruby-dev rubygems build-essential wget fuse libfuse2 rpm
           sudo gem install --no-document fpm
 
       - name: Install Python Dependencies & Build PyInstaller Binary
@@ -70,7 +70,7 @@ jobs:
           pyinstaller --noconfirm --onedir --windowed --name certscanner-gui get_cert_info_gui.py
           pyinstaller --noconfirm --onefile --name certscanner-cli get_cert_info.py
 
-      - name: Prepare Linux Package Directory Sructure
+      - name: Prepare Linux Package Directory Structure
         run: |
           mkdir -p pkg_root/usr/bin
           mkdir -p pkg_root/usr/share/applications
@@ -79,7 +79,9 @@ jobs:
 
           cp -r dist/certscanner-gui/* pkg_root/usr/lib/certscanner/
           cp dist/certscanner-cli pkg_root/usr/bin/certscanner-cli
-          ln -s /usr/lib/certscanner/certscanner-gui pkg_root/usr/bin/certscanner-gui
+
+          # Относительный симлинк для корректной работы и в DEB/RPM, и в AppImage
+          ln -s ../lib/certscanner/certscanner-gui pkg_root/usr/bin/certscanner-gui
 
           if [ -f packaging/certscanner.desktop ]; then
             cp packaging/certscanner.desktop pkg_root/usr/share/applications/
@@ -90,21 +92,23 @@ jobs:
 
       - name: Build DEB Package
         run: |
-          VERSION=${GITHUB_REF_NAME#v}
+          RAW_VER="${GITHUB_REF_NAME}"
+          VERSION="${RAW_VER#[vV]}"
           fpm -s dir -t deb \
             -n certscanner \
-            -v ${VERSION} \
+            -v "${VERSION}" \
             -C pkg_root \
             --description "X.509 Certificate Scanner and Exporter" \
-            --license "CPLv3" \
+            --license "GPLv3" \
             .
 
       - name: Build RPM Package
         run: |
-          VERSION=${GITHUB_REF_NAME#v}
+          RAW_VER="${GITHUB_REF_NAME}"
+          VERSION="${RAW_VER#[vV]}"
           fpm -s dir -t rpm \
             -n certscanner \
-            -v ${VERSION} \
+            -v "${VERSION}" \
             --iteration 1 \
             -C pkg_root \
             --description "X.509 Certificate Scanner and Exporter" \
@@ -116,19 +120,24 @@ jobs:
           wget https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage
           chmod +x appimagetool-x86_64.AppImage
 
+          # Распаковываем appimagetool, чтобы избежать проблем с FUSE в контейнере
+          ./appimagetool-x86_64.AppImage --appimage-extract
+
           mkdir -p AppDir
           cp -r pkg_root/* AppDir/
+
+          # Копируем .desktop и иконку в корень AppDir (требование AppImageKit)
           if [ -f packaging/certscanner.desktop ]; then cp packaging/certscanner.desktop AppDir/; fi
-          if [ -f packaging/certscanner.png ]; then cp packaging/certscanner.png AppDir/; fi
+          if [ -f packaging/certscanner.png ]; then cp packaging/certscanner.png AppDir/certscanner.png; fi
 
           cat << 'EOF' > AppDir/AppRun
           #!/bin/sh
           HERE="$(dirname "$(readlink -f "${0}")")"
-          exec "${HERE}/usr/bin/certscanner-gui" "$@"
+          exec "${HERE}/usr/lib/certscanner/certscanner-gui" "$@"
           EOF
           chmod +x AppDir/AppRun
 
-          ./appimagetool-x86_64.AppImage AppDir CertScanner-${GITHUB_REF_NAME}-x86_64.AppImage
+          ARCH=x86_64 ./squashfs-root/AppRun AppDir "CertScanner-${GITHUB_REF_NAME}-x86_64.AppImage"
 
       - name: Upload Linux Artifacts to Release
         uses: softprops/action-gh-release@v2
