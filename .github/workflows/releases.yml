@@ -102,6 +102,15 @@ jobs:
             --license "GPLv3" \
             .
 
+          fpm -s dir -t deb \
+            -n certscanner-cli \
+            -v "${VERSION}" \
+            -C dist \
+            --prefix /usr/bin \
+            --description "X.509 Certificate Scanner (CLI only)" \
+            --license "GPLv3" \
+            certscanner-cli
+
       - name: Build RPM Package
         run: |
           RAW_VER="${GITHUB_REF_NAME}"
@@ -114,6 +123,16 @@ jobs:
             --description "X.509 Certificate Scanner and Exporter" \
             --license "GPLv3" \
             .
+
+          fpm -s dir -t rpm \
+            -n certscanner-cli \
+            -v "${VERSION}" \
+            --iteration 1 \
+            -C dist \
+            --prefix /usr/bin \
+            --description "X.509 Certificate Scnanner (CLI only)" \
+            --license "GPLv3" \
+            certscanner-cli
 
       - name: Build AppImage
         run: |
