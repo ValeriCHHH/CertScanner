@@ -26,17 +26,17 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt pyinstaller
 
-      - name: Build Executables with PyInstaller
+      - name: Build Executables
         run: |
           pyinstaller --noconfirm --onedir --windowed --name CertScanner-GUI get_cert_info_gui.py
           pyinstaller --noconfirm --onefile --name certscanner-cli get_cert_info.py
 
-      - name: Compress Executables into ZIP Archives
+      - name: Compress Archives
         run: |
           Compress-Archive -Path "dist/CertScanner-GUI/*" -DestinationPath "CertScanner-Windows-GUI-x64.zip"
           Compress-Archive -Path "dist/certscanner-cli.exe" -DestinationPath "CertScanner-Windows-CLI-x64.zip"
 
-      - name: Upload Windows Artifacts to Release
+      - name: Upload Windows Artifacts
         uses: softprops/action-gh-release@v2
         with:
           files: |
@@ -46,10 +46,10 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # ------------------------------------------------------------------
-  # 2. СБОРКА ПОД LINUX (DEB, RPM, APPIMAGE - GUI & CLI)
+  # 2. СБОРКА ПОД LINUX (DEB, RPM, APPIMAGE, TAR.GZ)
   # ------------------------------------------------------------------
   build-linux:
-    name: Build Linux Packages (DEB, RPM, AppImage)
+    name: Build Linux Packages
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -60,110 +60,124 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install System Packaging Tools & FPM
+      - name: Install System Packaging Tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y ruby-dev rubygems build-essential wget fuse libfuse2 rpm
-          sudo gem install --no-document fpm
+          sudo apt-get install -y rpm wget libfuse2
 
-      - name: Install Python Dependencies & Build PyInstaller Binary
+      - name: Install Dependencies & Build PyInstaller
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt pyinstaller
           pyinstaller --noconfirm --onedir --windowed --name certscanner-gui get_cert_info_gui.py
           pyinstaller --noconfirm --onefile --name certscanner-cli get_cert_info.py
 
-      - name: Compress Linux CLI Executable
+      # --- 1. Автономные TAR.GZ архивы ---
+      - name: Compress Linux Executables
         run: |
+          tar -czvf "CertScanner-Linux-GUI-x64.tar.gz" -C dist certscanner-gui
           tar -czvf "CertScanner-Linux-CLI-x64.tar.gz" -C dist certscanner-cli
 
-      - name: Prepare Linux Package Directory Structures
+      # --- 2. DEB пакет (нативно через dpkg-deb) ---
+      - name: Build DEB Package
         run: |
-          # 1. Структура для полного пакета (GUI + CLI)
-          mkdir -p pkg_root/usr/bin
-          mkdir -p pkg_root/usr/share/applications
-          mkdir -p pkg_root/usr/share/icons/hicolor/256x256/apps
-          mkdir -p pkg_root/usr/lib/certscanner
+          RAW_VER="${GITHUB_REF_NAME}"
+          VERSION="${RAW_VER#[vV]}"
+          DEB_DIR="certscanner_${VERSION}_amd64"
 
-          cp -r dist/certscanner-gui/* pkg_root/usr/lib/certscanner/
-          cp dist/certscanner-cli pkg_root/usr/bin/certscanner-cli
+          mkdir -p "${DEB_DIR}/DEBIAN"
+          mkdir -p "${DEB_DIR}/usr/lib/certscanner"
+          mkdir -p "${DEB_DIR}/usr/bin"
+          mkdir -p "${DEB_DIR}/usr/share/applications"
+          mkdir -p "${DEB_DIR}/usr/share/icons/hicolor/256x256/apps"
 
-          cat << 'EOF' > pkg_root/usr/bin/certscanner-gui
+          cp -r dist/certscanner-gui/* "${DEB_DIR}/usr/lib/certscanner/"
+          cp dist/certscanner-cli "${DEB_DIR}/usr/bin/certscanner-cli"
+          cp packaging/certscanner.desktop "${DEB_DIR}/usr/share/applications/"
+          cp packaging/certscanner.png "${DEB_DIR}/usr/share/icons/hicolor/256x256/apps/"
+
+          cat << 'EOF' > "${DEB_DIR}/usr/bin/certscanner-gui"
           #!/bin/sh
           exec /usr/lib/certscanner/certscanner-gui "$@"
           EOF
-          chmod +x pkg_root/usr/bin/certscanner-gui
+          chmod +x "${DEB_DIR}/usr/bin/certscanner-gui"
 
-          if [ -f packaging/certscanner.desktop ]; then
-            cp packaging/certscanner.desktop pkg_root/usr/share/applications/
-          fi
-          if [ -f packaging/certscanner.png ]; then
-            cp packaging/certscanner.png pkg_root/usr/share/icons/hicolor/256x256/apps/
-          fi
+          cat << EOF > "${DEB_DIR}/DEBIAN/control"
+          Package: certscanner
+          Version: ${VERSION}
+          Section: utils
+          Priority: optional
+          Architecture: amd64
+          Maintainer: Developer <developer@example.com>
+          Description: X.509 Certificate Scanner and Exporter (GUI & CLI)
+          EOF
 
-          # 2. Структура для отдельного пакета CLI (только бинарник)
-          mkdir -p cli_pkg_root/usr/bin
-          cp dist/certscanner-cli cli_pkg_root/usr/bin/certscanner-cli
+          dpkg-deb --build "${DEB_DIR}"
 
-      - name: Build DEB Packages
+      # --- 3. RPM пакет (нативно через rpmbuild) ---
+      - name: Build RPM Package
         run: |
           RAW_VER="${GITHUB_REF_NAME}"
           VERSION="${RAW_VER#[vV]}"
 
-          # DEB: Полный пакет (GUI + CLI)
-          fpm -s dir -t deb \
-            -n certscanner \
-            -v "${VERSION}" \
-            -C pkg_root \
-            --description "X.509 Certificate Scanner and Exporter (GUI & CLI)" \
-            --license "GPLv3" \
-            .
+          RPM_ROOT="${HOME}/rpmbuild"
+          BUILD_ROOT="${RPM_ROOT}/BUILDROOT/certscanner-${VERSION}-1.x86_64"
 
-          # DEB: Легкий пакет (только CLI)
-          fpm -s dir -t deb \
-            -n certscanner-cli \
-            -v "${VERSION}" \
-            -C cli_pkg_root \
-            --description "X.509 Certificate Scanner (CLI only)" \
-            --license "GPLv3" \
-            .
+          mkdir -p "${RPM_ROOT}/SPECS"
+          mkdir -p "${RPM_ROOT}/RPMS"
+          mkdir -p "${BUILD_ROOT}/usr/lib/certscanner"
+          mkdir -p "${BUILD_ROOT}/usr/bin"
+          mkdir -p "${BUILD_ROOT}/usr/share/applications"
+          mkdir -p "${BUILD_ROOT}/usr/share/icons/hicolor/256x256/apps"
 
-      - name: Build RPM Packages
-        run: |
-          RAW_VER="${GITHUB_REF_NAME}"
-          VERSION="${RAW_VER#[vV]}"
+          cp -r dist/certscanner-gui/* "${BUILD_ROOT}/usr/lib/certscanner/"
+          cp dist/certscanner-cli "${BUILD_ROOT}/usr/bin/certscanner-cli"
+          cp packaging/certscanner.desktop "${BUILD_ROOT}/usr/share/applications/"
+          cp packaging/certscanner.png "${BUILD_ROOT}/usr/share/icons/hicolor/256x256/apps/"
 
-          # RPM: Полный пакет (GUI + CLI)
-          fpm -s dir -t rpm \
-            -n certscanner \
-            -v "${VERSION}" \
-            --iteration 1 \
-            -C pkg_root \
-            --description "X.509 Certificate Scanner and Exporter (GUI & CLI)" \
-            --license "GPLv3" \
-            .
+          cat << 'EOF' > "${BUILD_ROOT}/usr/bin/certscanner-gui"
+          #!/bin/sh
+          exec /usr/lib/certscanner/certscanner-gui "$@"
+          EOF
+          chmod +x "${BUILD_ROOT}/usr/bin/certscanner-gui"
 
-          # RPM: Легкий пакет (только CLI)
-          fpm -s dir -t rpm \
-            -n certscanner-cli \
-            -v "${VERSION}" \
-            --iteration 1 \
-            -C cli_pkg_root \
-            --description "X.509 Certificate Scanner (CLI only)" \
-            --license "GPLv3" \
-            .
+          cat << EOF > "${RPM_ROOT}/SPECS/certscanner.spec"
+          Name:           certscanner
+          Version:        ${VERSION}
+          Release:        1
+          Summary:        X.509 Certificate Scanner and Exporter
+          License:        GPLv3
+          Architecture:   x86_64
 
+          %description
+          X.509 Certificate Scanner and Exporter (GUI & CLI)
+
+          %files
+          /usr/lib/certscanner
+          /usr/bin/certscanner-gui
+          /usr/bin/certscanner-cli
+          /usr/share/applications/certscanner.desktop
+          /usr/share/icons/hicolor/256x256/apps/certscanner.png
+          EOF
+
+          rpmbuild -bb --buildroot="${BUILD_ROOT}" "${RPM_ROOT}/SPECS/certscanner.spec"
+          cp ${RPM_ROOT}/RPMS/x86_64/*.rpm ./
+
+      # --- 4. AppImage (официальный appimagetool) ---
       - name: Build AppImage
         run: |
-          wget https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage
+          RAW_VER="${GITHUB_REF_NAME}"
+          VERSION="${RAW_VER#[vV]}"
+
+          wget -q https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
           chmod +x appimagetool-x86_64.AppImage
-          ./appimagetool-x86_64.AppImage --appimage-extract
 
-          mkdir -p AppDir
-          cp -r pkg_root/* AppDir/
+          mkdir -p AppDir/usr/lib/certscanner
+          mkdir -p AppDir/usr/bin
 
-          if [ -f packaging/certscanner.desktop ]; then cp packaging/certscanner.desktop AppDir/; fi
-          if [ -f packaging/certscanner.png ]; then cp packaging/certscanner.png AppDir/certscanner.png; fi
+          cp -r dist/certscanner-gui/* AppDir/usr/lib/certscanner/
+          cp packaging/certscanner.desktop AppDir/
+          cp packaging/certscanner.png AppDir/
 
           cat << 'EOF' > AppDir/AppRun
           #!/bin/sh
@@ -172,43 +186,17 @@ jobs:
           EOF
           chmod +x AppDir/AppRun
 
-          ARCH=x86_64 ./squashfs-root/AppRun AppDir "CertScanner-${GITHUB_REF_NAME}-x86_64.AppImage"
+          ARCH=x86_64 ./appimagetool-x86_64.AppImage --appimage-extract-and-run AppDir "CertScanner-${VERSION}-x86_64.AppImage"
 
-      - name: Upload Linux Artifacts to Release
+      # --- Загрузка всех собранных файлов в Release ---
+      - name: Upload Linux Artifacts
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            *.deb
-            *.rpm
-            CertScanner-*.AppImage
+            certscanner_*.deb
+            certscanner-*.rpm
+            CertScanner-*-x86_64.AppImage
+            CertScanner-Linux-GUI-x64.tar.gz
             CertScanner-Linux-CLI-x64.tar.gz
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  # ------------------------------------------------------------------
-  # 3. СБОРКА FLATPAK
-  # ------------------------------------------------------------------
-  build-flatpak:
-    name: Build Flatpak Package
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/flatpak/flatpak-github-actions/ubuntu:manifest-v1
-      options: --privileged
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Build Flatpak Bundle
-        uses: flatpak/flatpak-github-actions/flatpak-builder@v6
-        with:
-          bundle: CertScanner.flatpak
-          manifest-path: packaging/org.example.CertScanner.yml
-          repository-name: certscanner-repo
-          branch: main
-
-      - name: Upload Flatpak Bundle to Release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: CertScanner.flatpak
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
