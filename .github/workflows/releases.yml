@@ -105,7 +105,7 @@ jobs:
           fpm -s dir -t rpm \
             -n certscanner \
             -v ${VERSION} \
-            --iterration "" \
+            --iteration "" \
             -C pkg_root \
             --description "X.509 Certificate Scanner and Exporter" \
             --license "GPLv3" \
